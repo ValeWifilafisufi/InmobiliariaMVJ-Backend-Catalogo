@@ -1,15 +1,16 @@
 package cl.Inmobiliaria.catalogo_backend.service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
-import cl.Inmobiliaria.catalogo_backend.entity.Planta;
+import org.springframework.transaction.annotation.Transactional;
+
 import cl.Inmobiliaria.catalogo_backend.dto.PlantaDTO;
 import cl.Inmobiliaria.catalogo_backend.dto.PropiedadDTO;
-import java.util.stream.Collectors;
+import cl.Inmobiliaria.catalogo_backend.entity.Planta;
 import cl.Inmobiliaria.catalogo_backend.entity.Propiedad;
 import cl.Inmobiliaria.catalogo_backend.repository.PropiedadRepository;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service 
 public class PropiedadService {
@@ -21,16 +22,20 @@ public class PropiedadService {
     }
 
     @Transactional(readOnly = true)
-    public List<PropiedadDTO> listar(String tipo, String ubicacion, String precioRango, Boolean esProyecto) {
+    public List<PropiedadDTO> listar(String tipo, String ubicacion, String precioRango, 
+                                     Boolean esProyecto, Integer dormitorios, Integer banos, String metrosRango) {
         return repositorio.findAll().stream()
                 .filter(p -> esProyecto == null || p.isEsProyecto() == esProyecto)
                 .filter(p -> tipo == null || tipo.isBlank() || p.getTipo().equalsIgnoreCase(tipo))
                 .filter(p -> ubicacion == null || ubicacion.isBlank() ||
                         p.getUbicacion().toLowerCase().contains(ubicacion.toLowerCase()) ||
                         p.getTitulo().toLowerCase().contains(ubicacion.toLowerCase()))
+                .filter(p -> dormitorios == null || (p.getDormitorios() != null && (dormitorios >= 4 ? p.getDormitorios() >= 4 : p.getDormitorios().equals(dormitorios))))
+                .filter(p -> banos == null || (p.getBanos() != null && (banos >= 3 ? p.getBanos() >= 3 : p.getBanos().equals(banos))))
                 .filter(p -> filtrarPorPrecio(p.getPrecio(), precioRango))
+                .filter(p -> filtrarPorMetros(p.getMetros(), metrosRango))
                 .map(this::convertirADTO)
-                .toList();
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -44,7 +49,7 @@ public class PropiedadService {
     public PropiedadDTO crear(PropiedadDTO dto) {
         validarDestacadas(dto, null);
         Propiedad entidad = convertirAEntidad(dto);
-        entidad.setId(null); // Garantiza que sea una creación nueva
+        entidad.setId(null); 
         Propiedad guardada = repositorio.save(entidad);
         return convertirADTO(guardada);
     }
@@ -88,6 +93,16 @@ public class PropiedadService {
             case "0-2500" -> precio <= 2500;
             case "2500-3000" -> precio >= 2500 && precio <= 3000;
             case "3000-mas" -> precio > 3000;
+            default -> true;
+        };
+    }
+
+    private boolean filtrarPorMetros(Double metros, String rango) {
+        if (rango == null || rango.isBlank() || metros == null) return true;
+        return switch (rango) {
+            case "0-50" -> metros <= 50;
+            case "50-100" -> metros >= 50 && metros <= 100;
+            case "100-mas" -> metros > 100;
             default -> true;
         };
     }
