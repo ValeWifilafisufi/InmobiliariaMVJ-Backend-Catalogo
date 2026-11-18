@@ -6,24 +6,25 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import cl.Inmobiliaria.catalogo_backend.dto.PlantaDTO;
-import cl.Inmobiliaria.catalogo_backend.dto.PropiedadDTO;
+import cl.Inmobiliaria.catalogo_backend.dto.PlantaRequest;
+import cl.Inmobiliaria.catalogo_backend.dto.PropiedadRequest;
+import cl.Inmobiliaria.catalogo_backend.dto.PropiedadResponse;
 import cl.Inmobiliaria.catalogo_backend.entity.Planta;
 import cl.Inmobiliaria.catalogo_backend.entity.Propiedad;
 import cl.Inmobiliaria.catalogo_backend.repository.PropiedadRepository;
 
-@Service 
+@Service
 public class PropiedadService {
 
     private final PropiedadRepository repositorio;
 
-    public PropiedadService(PropiedadRepository repositorio){
+    public PropiedadService(PropiedadRepository repositorio) {
         this.repositorio = repositorio;
     }
 
     @Transactional(readOnly = true)
-    public List<PropiedadDTO> listar(String tipo, String ubicacion, String precioRango, 
-                                     Boolean esProyecto, Integer dormitorios, Integer banos, String metrosRango) {
+    public List<PropiedadResponse> listar(String tipo, String ubicacion, String precioRango,
+                                          Boolean esProyecto, Integer dormitorios, Integer banos, String metrosRango) {
         return repositorio.findAll().stream()
                 .filter(p -> esProyecto == null || p.isEsProyecto() == esProyecto)
                 .filter(p -> tipo == null || tipo.isBlank() || p.getTipo().equalsIgnoreCase(tipo))
@@ -34,37 +35,39 @@ public class PropiedadService {
                 .filter(p -> banos == null || (p.getBanos() != null && (banos >= 3 ? p.getBanos() >= 3 : p.getBanos().equals(banos))))
                 .filter(p -> filtrarPorPrecio(p.getPrecio(), precioRango))
                 .filter(p -> filtrarPorMetros(p.getMetros(), metrosRango))
-                .map(this::convertirADTO)
+                .map(PropiedadResponse::desde)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public PropiedadDTO obtenerPorId(Long id) {
+    public PropiedadResponse obtenerPorId(Long id) {
         Propiedad entidad = repositorio.findById(id)
                 .orElseThrow(() -> new RuntimeException("No existe la propiedad con ID " + id));
-        return convertirADTO(entidad);
+        return PropiedadResponse.desde(entidad);
     }
 
     @Transactional
-    public PropiedadDTO crear(PropiedadDTO dto) {
-        validarDestacadas(dto, null);
-        Propiedad entidad = convertirAEntidad(dto);
-        entidad.setId(null); 
+    public PropiedadResponse crear(PropiedadRequest req) {
+        validarReglasDeNegocio(req);
+        validarDestacadas(req, null);
+        Propiedad entidad = convertirAEntidad(req);
+        entidad.setId(null);
         Propiedad guardada = repositorio.save(entidad);
-        return convertirADTO(guardada);
+        return PropiedadResponse.desde(guardada);
     }
 
     @Transactional
-    public PropiedadDTO actualizar(Long id, PropiedadDTO dto) {
+    public PropiedadResponse actualizar(Long id, PropiedadRequest req) {
         if (!repositorio.existsById(id)) {
             throw new RuntimeException("No existe la propiedad con ID " + id);
         }
-        validarDestacadas(dto, id);
+        validarReglasDeNegocio(req);
+        validarDestacadas(req, id);
 
-        Propiedad entidad = convertirAEntidad(dto);
+        Propiedad entidad = convertirAEntidad(req);
         entidad.setId(id);
         Propiedad actualizada = repositorio.save(entidad);
-        return convertirADTO(actualizada);
+        return PropiedadResponse.desde(actualizada);
     }
 
     @Transactional
@@ -75,11 +78,29 @@ public class PropiedadService {
         repositorio.deleteById(id);
     }
 
-    private void validarDestacadas(PropiedadDTO dto, Long idActual) {
-        if (dto.isDestacada() && dto.isDisponible()) {
+    private void validarReglasDeNegocio(PropiedadRequest req) {
+        if (req.esProyecto()) {
+            if (req.fechaEntrega() == null || req.fechaEntrega().isBlank()) {
+                throw new IllegalArgumentException("La fecha de entrega es obligatoria para proyectos inmobiliarios.");
+            }
+        } else {
+            if (req.dormitorios() == null || req.dormitorios() < 1) {
+                throw new IllegalArgumentException("La cantidad de dormitorios es obligatoria para propiedades individuales.");
+            }
+            if (req.banos() == null || req.banos() < 1) {
+                throw new IllegalArgumentException("La cantidad de baños es obligatoria para propiedades individuales.");
+            }
+            if (req.metros() == null || req.metros() <= 0) {
+                throw new IllegalArgumentException("La superficie en m² es obligatoria y debe ser mayor a 0.");
+            }
+        }
+    }
+
+    private void validarDestacadas(PropiedadRequest req, Long idActual) {
+        if (req.destacada() && req.disponible()) {
             long destacadasCount = (idActual == null)
-                    ? repositorio.countByEsProyectoAndDestacadaTrueAndDisponibleTrue(dto.isEsProyecto())
-                    : repositorio.countByEsProyectoAndDestacadaTrueAndDisponibleTrueAndIdNot(dto.isEsProyecto(), idActual);
+                    ? repositorio.countByEsProyectoAndDestacadaTrueAndDisponibleTrue(req.esProyecto())
+                    : repositorio.countByEsProyectoAndDestacadaTrueAndDisponibleTrueAndIdNot(req.esProyecto(), idActual);
 
             if (destacadasCount >= 4) {
                 throw new IllegalArgumentException("Límite alcanzado: Máximo 4 destacadas permitidas.");
@@ -107,87 +128,49 @@ public class PropiedadService {
         };
     }
 
-    private PropiedadDTO convertirADTO(Propiedad e) {
-        List<PlantaDTO> plantasDTO = (e.getPlantas() == null) ? List.of() :
-                e.getPlantas().stream()
-                        .map(this::convertirPlantaADTO)
-                        .collect(Collectors.toList());
-
-        return PropiedadDTO.builder()
-                .id(e.getId())
-                .esProyecto(e.isEsProyecto())
-                .tipo(e.getTipo())
-                .titulo(e.getTitulo())
-                .ubicacion(e.getUbicacion())
-                .precio(e.getPrecio())
-                .fechaEntrega(e.getFechaEntrega())
-                .descripcion(e.getDescripcion())
-                .imagenes(e.getImagenes())
-                .destacada(e.isDestacada())
-                .disponible(e.isDisponible())
-                .dormitorios(e.getDormitorios())
-                .banos(e.getBanos())
-                .metros(e.getMetros())
-                .plantas(plantasDTO)
-                .build();
-    }
-
-    private Propiedad convertirAEntidad(PropiedadDTO dto) {
-        List<Planta> plantas = (dto.getPlantas() == null) ? List.of() :
-                dto.getPlantas().stream()
+    private Propiedad convertirAEntidad(PropiedadRequest req) {
+        List<Planta> plantas = (req.plantas() == null) ? List.of() :
+                req.plantas().stream()
                         .map(this::convertirPlantaAEntidad)
                         .collect(Collectors.toList());
 
         return Propiedad.builder()
-                .id(dto.getId())
-                .esProyecto(dto.isEsProyecto())
-                .tipo(dto.getTipo())
-                .titulo(dto.getTitulo())
-                .ubicacion(dto.getUbicacion())
-                .precio(dto.getPrecio())
-                .fechaEntrega(dto.getFechaEntrega())
-                .descripcion(dto.getDescripcion())
-                .imagenes(dto.getImagenes() == null || dto.getImagenes().isEmpty() 
-                        ? List.of("/imagenes/casaFam1.jpg") : dto.getImagenes())
-                .destacada(dto.isDisponible() && dto.isDestacada())
-                .disponible(dto.isDisponible())
-                .dormitorios(dto.getDormitorios())
-                .banos(dto.getBanos())
-                .metros(dto.getMetros())
+                .esProyecto(req.esProyecto())
+                .tipo(req.tipo())
+                .titulo(req.titulo())
+                .ubicacion(req.ubicacion())
+                .precio(req.precio())
+                .fechaEntrega(req.fechaEntrega())
+                .descripcion(req.descripcion())
+                .imagenes(req.imagenes() == null || req.imagenes().isEmpty()
+                        ? List.of("/imagenes/casaFam1.jpg") : req.imagenes())
+                .destacada(req.disponible() && req.destacada())
+                .disponible(req.disponible())
+                .dormitorios(req.dormitorios())
+                .banos(req.banos())
+                .metros(req.metros())
                 .plantas(plantas)
                 .build();
     }
 
-    private PlantaDTO convertirPlantaADTO(Planta p) {
+    private Planta convertirPlantaAEntidad(PlantaRequest p) {
         if (p == null) return null;
-        return PlantaDTO.builder()
-                .id(p.getId())
-                .nombre(p.getNombre())
-                .precio(p.getPrecio())
-                .plano(p.getPlano())
-                .dormitorios(p.getDormitorios())
-                .banos(p.getBanos())
-                .supInterior(p.getSupInterior())
-                .supTerraza(p.getSupTerraza())
-                .supTotal(p.getSupTotal())
-                .disponible(p.isDisponible())
-                .build();
-    }
+        double interior = p.supInterior() != null ? p.supInterior() : 0.0;
+        double terraza = p.supTerraza() != null ? p.supTerraza() : 0.0;
+        double supTotal = Math.round((interior + terraza) * 100.0) / 100.0;
+        boolean disp = p.disponible() != null ? p.disponible() : true;
 
-    private Planta convertirPlantaAEntidad(PlantaDTO p) {
-        if (p == null) return null;
-        double supTotal = Math.round((p.getSupInterior() + p.getSupTerraza()) * 100.0) / 100.0;
         return Planta.builder()
-                .id(p.getId())
-                .nombre(p.getNombre())
-                .precio(p.getPrecio())
-                .plano(p.getPlano())
-                .dormitorios(p.getDormitorios())
-                .banos(p.getBanos())
-                .supInterior(p.getSupInterior())
-                .supTerraza(p.getSupTerraza())
-                .supTotal(supTotal > 0 ? supTotal : p.getSupTotal())
-                .disponible(p.isDisponible())
+                .id(p.id())
+                .nombre(p.nombre())
+                .precio(p.precio())
+                .plano(p.plano())
+                .dormitorios(p.dormitorios())
+                .banos(p.banos())
+                .supInterior(interior)
+                .supTerraza(terraza)
+                .supTotal(supTotal > 0 ? supTotal : (p.supTotal() != null ? p.supTotal() : 0.0))
+                .disponible(disp)
                 .build();
     }
 }

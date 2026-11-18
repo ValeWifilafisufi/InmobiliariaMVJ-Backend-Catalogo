@@ -1,7 +1,9 @@
 package cl.Inmobiliaria.catalogo_backend.controller;
 
-import cl.Inmobiliaria.catalogo_backend.dto.PropiedadDTO;
+import cl.Inmobiliaria.catalogo_backend.dto.PropiedadRequest;
+import cl.Inmobiliaria.catalogo_backend.dto.PropiedadResponse;
 import cl.Inmobiliaria.catalogo_backend.service.PropiedadService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +19,7 @@ public class PropiedadController {
     private final PropiedadService propiedadService;
 
     @GetMapping
-    public ResponseEntity<List<PropiedadDTO>> listar(
+    public ResponseEntity<List<PropiedadResponse>> listar(
             @RequestParam(required = false) String tipo,
             @RequestParam(required = false) String ubicacion,
             @RequestParam(required = false) String precio,
@@ -25,26 +27,29 @@ public class PropiedadController {
             @RequestParam(required = false) Integer dormitorios,
             @RequestParam(required = false) Integer banos,
             @RequestParam(required = false) String metros) {
-        
-        List<PropiedadDTO> lista = propiedadService.listar(tipo, ubicacion, precio, esProyecto, dormitorios, banos, metros);
+
+        List<PropiedadResponse> lista = propiedadService.listar(
+                tipo, ubicacion, precio, esProyecto, dormitorios, banos, metros);
         return ResponseEntity.ok(lista);
-    } // <--- Faltaba esta llave de cierre
+    }
 
     @GetMapping("/{id}")
-    public ResponseEntity<PropiedadDTO> obtenerPorId(@PathVariable Long id) {
-        PropiedadDTO dto = propiedadService.obtenerPorId(id);
-        return ResponseEntity.ok(dto);
+    public ResponseEntity<PropiedadResponse> obtenerPorId(@PathVariable Long id) {
+        PropiedadResponse response = propiedadService.obtenerPorId(id);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping
-    public ResponseEntity<PropiedadDTO> crear(@RequestBody PropiedadDTO dto) {
-        PropiedadDTO creada = propiedadService.crear(dto);
+    public ResponseEntity<PropiedadResponse> crear(@Valid @RequestBody PropiedadRequest request) {
+        PropiedadResponse creada = propiedadService.crear(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(creada);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<PropiedadDTO> actualizar(@PathVariable Long id, @RequestBody PropiedadDTO dto) {
-        PropiedadDTO actualizada = propiedadService.actualizar(id, dto);
+    public ResponseEntity<PropiedadResponse> actualizar(
+            @PathVariable Long id,
+            @Valid @RequestBody PropiedadRequest request) {
+        PropiedadResponse actualizada = propiedadService.actualizar(id, request);
         return ResponseEntity.ok(actualizada);
     }
 

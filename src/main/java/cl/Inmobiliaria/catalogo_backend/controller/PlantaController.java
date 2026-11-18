@@ -1,7 +1,9 @@
 package cl.Inmobiliaria.catalogo_backend.controller;
 
-import cl.Inmobiliaria.catalogo_backend.dto.PlantaDTO;
+import cl.Inmobiliaria.catalogo_backend.dto.PlantaRequest;
+import cl.Inmobiliaria.catalogo_backend.dto.PlantaResponse;
 import cl.Inmobiliaria.catalogo_backend.service.PlantaService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,31 +16,28 @@ public class PlantaController {
 
     private final PlantaService plantaService;
 
-    // GET /api/plantas/1
     @GetMapping("/{id}")
-    public ResponseEntity<PlantaDTO> obtenerPorId(@PathVariable Long id) {
-        PlantaDTO dto = plantaService.obtenerPorId(id);
-        return ResponseEntity.ok(dto);
+    public ResponseEntity<PlantaResponse> obtenerPorId(@PathVariable Long id) {
+        PlantaResponse response = plantaService.obtenerPorId(id);
+        return ResponseEntity.ok(response);
     }
 
-    // POST /api/plantas/propiedad/9 (Asocia una nueva planta al proyecto con ID 9)
     @PostMapping("/propiedad/{propiedadId}")
-    public ResponseEntity<PlantaDTO> agregarPlantaAProyecto(
-            @PathVariable Long propiedadId, 
-            @RequestBody PlantaDTO dto) {
-        
-        PlantaDTO nuevaPlanta = plantaService.agregarPlantaAProyecto(propiedadId, dto);
+    public ResponseEntity<PlantaResponse> agregarPlantaAProyecto(
+            @PathVariable Long propiedadId,
+            @Valid @RequestBody PlantaRequest request) {
+        PlantaResponse nuevaPlanta = plantaService.agregarPlantaAProyecto(propiedadId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(nuevaPlanta);
     }
 
-    // PUT /api/plantas/1
     @PutMapping("/{id}")
-    public ResponseEntity<PlantaDTO> actualizar(@PathVariable Long id, @RequestBody PlantaDTO dto) {
-        PlantaDTO actualizada = plantaService.actualizar(id, dto);
+    public ResponseEntity<PlantaResponse> actualizar(
+            @PathVariable Long id,
+            @Valid @RequestBody PlantaRequest request) {
+        PlantaResponse actualizada = plantaService.actualizar(id, request);
         return ResponseEntity.ok(actualizada);
     }
 
-    // DELETE /api/plantas/1
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(@PathVariable Long id) {
         plantaService.eliminar(id);
